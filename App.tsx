@@ -6,8 +6,8 @@ import { Dashboard } from './components/Dashboard';
 import { ScenarioView } from './components/ScenarioView';
 import { RoundFeedbackView } from './components/RoundFeedbackView';
 import { GameOver } from './components/GameOver';
-import { DIFFICULTY_SETTINGS, CRITICAL_THRESHOLD, MAX_ROUNDS } from './constants';
-import { ShieldCheck, PlayCircle, Settings, Target, AlertTriangle, Clock, Zap } from 'lucide-react';
+import { DIFFICULTY_SETTINGS, CRITICAL_THRESHOLD } from './constants';
+import { ShieldCheck, Target, AlertTriangle, Clock, Zap, TrendingUp } from 'lucide-react';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>({
@@ -18,8 +18,8 @@ const App: React.FC = () => {
     difficulty: Difficulty.NORMAL,
     history: [],
     resilienceScore: 0,
-    bailoutUsed: false,
     finalBailoutUsed: false,
+    loanTaken: false,
     investorDebuffRounds: 0,
     currentScenario: null,
     loading: false,
@@ -49,7 +49,7 @@ const App: React.FC = () => {
 
   // Initialize or Next Round
   const startRound = useCallback((currentState: GameState, deck: Scenario[]) => {
-    setGameState(prev => ({ ...prev, loading: true, status: 'PLAYING' }));
+    setGameState(prev => ({ ...prev, loading: true, status: 'PLAYING', loanTaken: false }));
     
     // Pick next scenario from deck
     const scenarioIndex = currentState.round - 1;
@@ -93,8 +93,8 @@ const App: React.FC = () => {
           choiceSelected: "N/A"
       }],
       resilienceScore: 0,
-      bailoutUsed: false,
       finalBailoutUsed: false,
+      loanTaken: false,
       investorDebuffRounds: 0,
       currentScenario: null,
       loading: true,
@@ -114,39 +114,52 @@ const App: React.FC = () => {
       let scoreDelta = 0;
       let gameOverReason: string | undefined;
 
+      // Calculate Momentum/Experience Bonus
+      // Grows by 0.25 per round. Round 1: +0, Round 5: +1.0, Round 9: +2.0
+      const momentumBonus = (prev.round - 1) * 0.25;
+
       // 1. Apply Impacts
       (Object.keys(choice.impacts) as MetricType[]).forEach(key => {
-        let change = choice.impacts[key];
+        const baseImpact = choice.impacts[key];
         
         // Apply volatility based on difficulty
         const volatility = DIFFICULTY_SETTINGS[prev.difficulty].volatility;
-        change = Math.round(change * volatility);
+        
+        // Use float calculation
+        let calculatedChange = baseImpact * volatility;
+
+        // Apply Momentum Bonus to everything (Passive Improvement/Resilience)
+        calculatedChange += momentumBonus;
 
         // Apply Debuff: No positive finance gains if debuff active
-        if (key === MetricType.FINANCES && prev.investorDebuffRounds > 0 && change > 0) {
-          change = 0;
+        if (key === MetricType.FINANCES && prev.investorDebuffRounds > 0 && calculatedChange > 0) {
+          calculatedChange = 0;
           impactStrings.push(`Finances frozen by Investors`);
         }
 
         // Timeout penalty
-        if (isTimeout) change -= 1;
+        if (isTimeout) calculatedChange -= 1;
 
         const oldValue = newMetrics[key].value;
-        let newValue = oldValue + change;
+        let newValue = oldValue + calculatedChange;
         
         // Clamping 0-10
         newValue = Math.max(0, Math.min(10, newValue));
         
+        const diff = newValue - oldValue;
+
         newMetrics[key] = {
           type: key,
           value: newValue,
-          delta: newValue - oldValue
+          delta: diff
         };
 
         // Record simplified impact string for feedback
-        if (newValue - oldValue !== 0) {
-            const sign = newValue > oldValue ? '+' : '';
-            impactStrings.push(`${key} ${sign}${newValue - oldValue}`);
+        if (Math.abs(diff) > 0.01) {
+            const sign = diff > 0 ? '+' : '';
+            // Show decimal if it's a fractional change (likely due to bonus)
+            const valDisplay = Number.isInteger(diff) ? diff.toString() : diff.toFixed(1);
+            impactStrings.push(`${key} ${sign}${valDisplay}`);
         }
 
         if (newValue !== oldValue) {
@@ -154,6 +167,10 @@ const App: React.FC = () => {
            if (newValue < oldValue) scoreDelta -= (oldValue - newValue) * 5;
         }
       });
+
+      if (momentumBonus > 0 && !isTimeout) {
+        impactStrings.push(`Exp. Bonus: +${momentumBonus.toFixed(2)}`);
+      }
 
       if (isTimeout) impactStrings.push("Timeout Penalty (-1 All)");
 
@@ -171,7 +188,7 @@ const App: React.FC = () => {
       if (failedMetrics.length > 0) {
         gameOverReason = `Critical failure in: ${failedMetrics.map(m => m.type).join(', ')}`;
         
-        // Unlock bailout for future runs since they lost
+        // Unlock bailout for future runs (and this one immediately) since they lost
         localStorage.setItem('hasLostGame', 'true');
         setBailoutUnlocked(true);
 
@@ -208,7 +225,7 @@ const App: React.FC = () => {
         ...prev,
         round: nextRound,
         metrics: newMetrics,
-        resilienceScore: prev.resilienceScore + scoreDelta,
+        resilienceScore: Math.round(prev.resilienceScore + scoreDelta), // Round score to integer
         investorDebuffRounds: newDebuff,
         status: 'ROUND_FEEDBACK',
         lastRoundFeedback: feedbackData,
@@ -244,32 +261,32 @@ const App: React.FC = () => {
       handleChoice(safeChoice, true);
   };
 
-  const handleBailout = () => {
-      setGameState(prev => {
-          const newMetrics = { ...prev.metrics };
-          newMetrics[MetricType.FINANCES].value = Math.min(10, newMetrics[MetricType.FINANCES].value + 3);
-          newMetrics[MetricType.FINANCES].delta = 3;
-          
-          newMetrics[MetricType.PUBLIC_IMAGE].value = Math.min(10, newMetrics[MetricType.PUBLIC_IMAGE].value + 1);
-          newMetrics[MetricType.PUBLIC_IMAGE].delta = 1;
-          
-          newMetrics[MetricType.MORALE].value = Math.max(0, newMetrics[MetricType.MORALE].value - 2);
-          newMetrics[MetricType.MORALE].delta = -2;
+  const handleTakeLoan = () => {
+    setGameState(prev => {
+      const newMetrics = { ...prev.metrics };
+      const currentFinances = newMetrics[MetricType.FINANCES].value;
+      
+      // Boost Finances
+      const newFinanceValue = Math.min(10, currentFinances + 2);
+      newMetrics[MetricType.FINANCES] = {
+        type: MetricType.FINANCES,
+        value: newFinanceValue,
+        delta: newFinanceValue - currentFinances
+      };
 
-          setFeedbackToast({
-              title: "Bailout Secured",
-              items: ["Finances +3", "Image +1", "Morale -2", "Investors control finances for 2 rounds."]
-          });
-          setTimeout(() => setFeedbackToast(null), 4000);
-
-          return {
-              ...prev,
-              metrics: newMetrics,
-              bailoutUsed: true,
-              investorDebuffRounds: 2,
-              resilienceScore: prev.resilienceScore - 50 // Heavy penalty
-          };
+      setFeedbackToast({
+        title: "Bank Loan Approved",
+        items: [`Finances +${(newFinanceValue - currentFinances).toFixed(1)}`, "Resilience Score -10 (Debt Penalty)"]
       });
+      setTimeout(() => setFeedbackToast(null), 3000);
+
+      return {
+        ...prev,
+        metrics: newMetrics,
+        resilienceScore: prev.resilienceScore - 10, // Penalty for taking debt
+        loanTaken: true
+      };
+    });
   };
 
   const handleFinalBailout = () => {
@@ -334,7 +351,7 @@ const App: React.FC = () => {
                     </h3>
                     <p className="text-slate-300 leading-relaxed text-sm">
                         Steer a vulnerable corporation through a series of unpredictable crises. 
-                        Your goal is to <strong>survive all rounds</strong> without allowing any of your four key indicators to crash.
+                        Your goal is to <strong>survive all rounds</strong> without allowing any of your four key indicators to crash below 2.0.
                     </p>
                 </div>
                 
@@ -382,6 +399,24 @@ const App: React.FC = () => {
                         <p className="text-slate-400 text-sm">The clock is ticking. Hesitation leads to default decisions and penalties.</p>
                     </div>
                 </div>
+                
+                {/* Resilience Score Explanation */}
+                <div className="bg-indigo-900/20 p-4 rounded-lg border border-indigo-500/30 mt-4 text-left">
+                    <h4 className="text-indigo-400 font-bold flex items-center gap-2 mb-2 text-sm uppercase tracking-wider">
+                        <TrendingUp size={16} /> Scoring: The Resilience Score
+                    </h4>
+                    <div className="space-y-2 text-sm text-slate-300">
+                        <p>Your measure of long-term stability. Higher is better.</p>
+                        <ul className="space-y-1 list-disc list-inside text-xs text-slate-400 ml-1">
+                            <li><span className="text-green-400 font-bold">+10 pts</span> for every 1.0 metric increase.</li>
+                            <li><span className="text-cyan-400 font-bold">+20 pts</span> Stability Bonus (Round End) if all metrics > 4.0.</li>
+                            <li><span className="text-red-400 font-bold">-5 pts</span> Loss Penalty for every 1.0 metric decrease.</li>
+                            <li><span className="text-amber-400 font-bold">-10 pts</span> Debt Penalty for each Bank Loan.</li>
+                            <li><span className="text-purple-400 font-bold">-50% Total Score</span> Penalty for using Final Bailout.</li>
+                        </ul>
+                    </div>
+                </div>
+
                  <div className="text-center mt-4 bg-red-900/20 py-3 rounded border border-red-900/30">
                     <p className="text-red-400 text-sm font-bold">
                         ⚠️ GAME OVER CONDITION: If ANY metric drops below 2.0
@@ -428,13 +463,13 @@ const App: React.FC = () => {
                gameState={gameState} 
                onRestart={() => setShowIntro(true)} 
                onFinalBailout={handleFinalBailout}
+               bailoutUnlocked={bailoutUnlocked}
              />
           ) : (
             <>
               <Dashboard 
                 gameState={gameState} 
-                onBailout={handleBailout} 
-                bailoutUnlocked={bailoutUnlocked}
+                onTakeLoan={handleTakeLoan}
               />
               
               {gameState.status === 'ROUND_FEEDBACK' && gameState.lastRoundFeedback && (

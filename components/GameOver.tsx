@@ -9,13 +9,15 @@ interface GameOverProps {
   gameState: GameState;
   onRestart: () => void;
   onFinalBailout: () => void;
+  bailoutUnlocked: boolean;
 }
 
-export const GameOver: React.FC<GameOverProps> = ({ gameState, onRestart, onFinalBailout }) => {
+export const GameOver: React.FC<GameOverProps> = ({ gameState, onRestart, onFinalBailout, bailoutUnlocked }) => {
   const { history, status, resilienceScore, gameOverReason, difficulty, finalBailoutUsed } = gameState;
 
   const isVictory = status === 'VICTORY';
-  const canRescue = !isVictory && !finalBailoutUsed;
+  // Bailout condition: Must have lost (unlocked), not used it this game yet, and currently be in a loss state
+  const canRescue = !isVictory && !finalBailoutUsed && bailoutUnlocked;
 
   // Prepare chart data
   const chartData = history.map(h => ({

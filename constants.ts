@@ -1,8 +1,8 @@
+
 import { Difficulty } from './types';
 
 export const MAX_ROUNDS = 10; // Standard length
 export const CRITICAL_THRESHOLD = 2; // Below this is game over
-export const BAILOUT_THRESHOLD = 3; // Can use bailout if any metric is below this
 
 export const DIFFICULTY_SETTINGS = {
   [Difficulty.EASY]: {

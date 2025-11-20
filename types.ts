@@ -57,8 +57,8 @@ export interface GameState {
     choiceSelected: string;
   }[];
   resilienceScore: number;
-  bailoutUsed: boolean;
   finalBailoutUsed: boolean; // New: End game rescue
+  loanTaken: boolean; // New: Track if loan was taken this round
   investorDebuffRounds: number; // If > 0, finance gains are blocked
   currentScenario: Scenario | null;
   loading: boolean;
