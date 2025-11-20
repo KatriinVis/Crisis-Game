@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { RoundFeedbackData, MetricType, Choice } from '../types';
-import { ArrowRight, CheckCircle, Clock, Target } from 'lucide-react';
+import { RoundFeedbackData, MetricType } from '../types';
+import { ArrowRight, Clock, Target } from 'lucide-react';
 import { COLORS } from '../constants';
 
 interface RoundFeedbackViewProps {
