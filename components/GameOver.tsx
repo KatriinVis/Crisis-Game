@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { GameState, MetricType } from '../types';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { COLORS } from '../constants';
 import { Trophy, Skull, RefreshCcw, Siren } from 'lucide-react';
 
@@ -16,17 +15,7 @@ export const GameOver: React.FC<GameOverProps> = ({ gameState, onRestart, onFina
   const { history, status, resilienceScore, gameOverReason, difficulty, finalBailoutUsed } = gameState;
 
   const isVictory = status === 'VICTORY';
-  // Bailout condition: Must have lost (unlocked), not used it this game yet, and currently be in a loss state
   const canRescue = !isVictory && !finalBailoutUsed && bailoutUnlocked;
-
-  // Prepare chart data
-  const chartData = history.map(h => ({
-    round: h.round,
-    [MetricType.MORALE]: h.metrics[MetricType.MORALE],
-    [MetricType.FINANCES]: h.metrics[MetricType.FINANCES],
-    [MetricType.SUPPLY_CHAIN]: h.metrics[MetricType.SUPPLY_CHAIN],
-    [MetricType.PUBLIC_IMAGE]: h.metrics[MetricType.PUBLIC_IMAGE],
-  }));
 
   let title = isVictory ? "Company Saved!" : "Bankruptcy Declared";
   let subtitle = isVictory 
@@ -42,6 +31,22 @@ export const GameOver: React.FC<GameOverProps> = ({ gameState, onRestart, onFina
     else if (minVal >= 5) tier = "Stable Leadership (Solid)";
     else tier = "Survivalist (Barely Made It)";
   }
+
+  // --- Custom Simple Chart Logic ---
+  // We map the rounds to X coordinates (0 to 100%) and values to Y coordinates (0 to 100%)
+  const rounds = history.map(h => h.round);
+  const maxR = Math.max(...rounds, 1); // avoid div by 0
+
+  const getPoints = (type: MetricType) => {
+    return history.map((h, i) => {
+      const x = (h.round / maxR) * 100;
+      const val = h.metrics[type];
+      // Y axis: 0 is bottom (100%), 10 is top (0%)
+      // Value 0-10. 
+      const y = 100 - (val * 10); 
+      return `${x},${y}`;
+    }).join(' ');
+  };
 
   return (
     <div className="max-w-4xl mx-auto bg-slate-800 rounded-2xl shadow-2xl overflow-hidden border border-slate-700 animate-fade-in">
@@ -100,22 +105,43 @@ export const GameOver: React.FC<GameOverProps> = ({ gameState, onRestart, onFina
         )}
 
         <h3 className="text-lg font-bold text-slate-300 mb-4">Performance Trend</h3>
-        <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="round" stroke="#94a3b8" />
-              <YAxis domain={[0, 10]} stroke="#94a3b8" />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#f1f5f9' }} 
-              />
-              <Legend />
-              <Line type="monotone" dataKey={MetricType.MORALE} stroke={COLORS[MetricType.MORALE]} strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey={MetricType.FINANCES} stroke={COLORS[MetricType.FINANCES]} strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey={MetricType.SUPPLY_CHAIN} stroke={COLORS[MetricType.SUPPLY_CHAIN]} strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey={MetricType.PUBLIC_IMAGE} stroke={COLORS[MetricType.PUBLIC_IMAGE]} strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+        
+        {/* Custom SVG Chart */}
+        <div className="w-full bg-slate-900/50 rounded-xl p-4 border border-slate-700 mb-6 relative h-64">
+           {/* Grid Lines */}
+           <div className="absolute inset-4 flex flex-col justify-between pointer-events-none text-xs text-slate-600 font-mono z-0">
+              <div className="border-b border-slate-700/50 w-full h-0 flex items-center"><span className="-ml-6 absolute">10</span></div>
+              <div className="border-b border-slate-700/50 w-full h-0 flex items-center"><span className="-ml-6 absolute">7.5</span></div>
+              <div className="border-b border-slate-600 w-full h-0 flex items-center"><span className="-ml-6 absolute text-slate-400">5.0</span></div>
+              <div className="border-b border-red-900/50 w-full h-0 flex items-center"><span className="-ml-6 absolute text-red-500">2.5</span></div>
+              <div className="border-b border-slate-700/50 w-full h-0 flex items-center"><span className="-ml-6 absolute">0</span></div>
+           </div>
+
+           <svg className="w-full h-full overflow-visible relative z-10" preserveAspectRatio="none" viewBox="0 0 100 100">
+              {Object.values(MetricType).map((type) => (
+                <polyline
+                   key={type}
+                   points={getPoints(type)}
+                   fill="none"
+                   stroke={COLORS[type]}
+                   strokeWidth="2"
+                   vectorEffect="non-scaling-stroke"
+                   strokeLinecap="round"
+                   strokeLinejoin="round"
+                   className="opacity-80 hover:opacity-100 transition-opacity duration-200"
+                />
+              ))}
+           </svg>
+           
+           {/* Legend */}
+           <div className="absolute top-2 right-2 flex flex-col gap-1 bg-slate-900/80 p-2 rounded border border-slate-700 backdrop-blur-sm">
+              {Object.values(MetricType).map(type => (
+                 <div key={type} className="flex items-center gap-2 text-[10px]">
+                    <span className="w-2 h-2 rounded-full" style={{backgroundColor: COLORS[type]}}></span>
+                    <span className="text-slate-300">{type}</span>
+                 </div>
+              ))}
+           </div>
         </div>
 
         <button 
