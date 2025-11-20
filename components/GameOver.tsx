@@ -1,18 +1,21 @@
+
 import React from 'react';
 import { GameState, MetricType } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { COLORS } from '../constants';
-import { Trophy, Skull, RefreshCcw } from 'lucide-react';
+import { Trophy, Skull, RefreshCcw, Siren } from 'lucide-react';
 
 interface GameOverProps {
   gameState: GameState;
   onRestart: () => void;
+  onFinalBailout: () => void;
 }
 
-export const GameOver: React.FC<GameOverProps> = ({ gameState, onRestart }) => {
-  const { history, status, resilienceScore, gameOverReason, difficulty } = gameState;
+export const GameOver: React.FC<GameOverProps> = ({ gameState, onRestart, onFinalBailout }) => {
+  const { history, status, resilienceScore, gameOverReason, difficulty, finalBailoutUsed } = gameState;
 
   const isVictory = status === 'VICTORY';
+  const canRescue = !isVictory && !finalBailoutUsed;
 
   // Prepare chart data
   const chartData = history.map(h => ({
@@ -73,6 +76,27 @@ export const GameOver: React.FC<GameOverProps> = ({ gameState, onRestart }) => {
       </div>
 
       <div className="p-8">
+        
+        {canRescue && (
+            <div className="mb-8 p-5 bg-indigo-900/20 border border-indigo-500/50 rounded-xl relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                <h4 className="text-indigo-400 font-bold flex items-center gap-2 mb-2 text-lg">
+                    <Siren className="animate-pulse w-5 h-5" /> 
+                    Government Intervention Available
+                </h4>
+                <p className="text-sm text-slate-300 mb-4 leading-relaxed">
+                The federal government is offering a one-time emergency rescue package to prevent total collapse. 
+                This will restore your critical metrics to survival levels (3.0), but your Resilience Score will be halved.
+                </p>
+                <button 
+                    onClick={onFinalBailout} 
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition-all shadow-lg shadow-indigo-900/50 hover:shadow-indigo-700/50 flex justify-center gap-2 items-center"
+                >
+                    Accept Final Bailout & Continue
+                </button>
+            </div>
+        )}
+
         <h3 className="text-lg font-bold text-slate-300 mb-4">Performance Trend</h3>
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
@@ -94,10 +118,10 @@ export const GameOver: React.FC<GameOverProps> = ({ gameState, onRestart }) => {
 
         <button 
           onClick={onRestart}
-          className="mt-8 w-full py-4 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
+          className="mt-8 w-full py-4 bg-slate-700 hover:bg-cyan-600 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 border border-slate-600 hover:border-cyan-400"
         >
           <RefreshCcw size={20} />
-          Play Again
+          {isVictory ? 'Play Again' : 'Restart Game'}
         </button>
       </div>
     </div>

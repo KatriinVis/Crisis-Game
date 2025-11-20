@@ -7,7 +7,7 @@ import { ScenarioView } from './components/ScenarioView';
 import { RoundFeedbackView } from './components/RoundFeedbackView';
 import { GameOver } from './components/GameOver';
 import { DIFFICULTY_SETTINGS, CRITICAL_THRESHOLD, MAX_ROUNDS } from './constants';
-import { ShieldCheck, PlayCircle, Settings } from 'lucide-react';
+import { ShieldCheck, PlayCircle, Settings, Target, AlertTriangle, Clock, Zap } from 'lucide-react';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>({
@@ -19,6 +19,7 @@ const App: React.FC = () => {
     history: [],
     resilienceScore: 0,
     bailoutUsed: false,
+    finalBailoutUsed: false,
     investorDebuffRounds: 0,
     currentScenario: null,
     loading: false,
@@ -93,6 +94,7 @@ const App: React.FC = () => {
       }],
       resilienceScore: 0,
       bailoutUsed: false,
+      finalBailoutUsed: false,
       investorDebuffRounds: 0,
       currentScenario: null,
       loading: true,
@@ -155,6 +157,14 @@ const App: React.FC = () => {
 
       if (isTimeout) impactStrings.push("Timeout Penalty (-1 All)");
 
+      // Prepare Feedback Data
+      const feedbackData: RoundFeedbackData = {
+        scenario: prev.currentScenario!,
+        selectedChoiceId: choice.id,
+        impacts: impactStrings,
+        isTimeout
+      };
+
       // 2. Check Survival
       const failedMetrics = (Object.values(newMetrics) as MetricState[]).filter(m => m.value < CRITICAL_THRESHOLD);
       
@@ -170,6 +180,7 @@ const App: React.FC = () => {
             metrics: newMetrics,
             status: 'GAME_OVER',
             gameOverReason,
+            lastRoundFeedback: feedbackData, // Save feedback even on game over for final bailout view
             history: [...prev.history, {
                 round: prev.round,
                 metrics: {
@@ -179,7 +190,7 @@ const App: React.FC = () => {
                     [MetricType.PUBLIC_IMAGE]: newMetrics[MetricType.PUBLIC_IMAGE].value,
                 },
                 eventTitle: prev.currentScenario!.title,
-                choiceSelected: choice.text
+                choiceSelected: isTimeout ? "TIMEOUT" : choice.text
             }]
         };
       }
@@ -192,14 +203,6 @@ const App: React.FC = () => {
 
       // Decrement debuff
       const newDebuff = prev.investorDebuffRounds > 0 ? prev.investorDebuffRounds - 1 : 0;
-
-      // Prepare Feedback Data
-      const feedbackData: RoundFeedbackData = {
-        scenario: prev.currentScenario!,
-        selectedChoiceId: choice.id,
-        impacts: impactStrings,
-        isTimeout
-      };
 
       const nextState: GameState = {
         ...prev,
@@ -269,6 +272,40 @@ const App: React.FC = () => {
       });
   };
 
+  const handleFinalBailout = () => {
+    setGameState(prev => {
+        const newMetrics = { ...prev.metrics };
+        // Reset criticals to 3
+        (Object.values(newMetrics) as MetricState[]).forEach(m => {
+            if (m.value < 2) {
+                m.value = 3;
+                m.delta = 3 - m.value;
+            }
+        });
+        
+        // Proceed to next round logic similar to handleChoice success path
+        const nextRound = prev.round + 1;
+        const newDebuff = prev.investorDebuffRounds > 0 ? prev.investorDebuffRounds - 1 : 0;
+
+        setFeedbackToast({
+            title: "Federal Rescue Accepted",
+            items: ["Critical Metrics Reset to 3", "Resilience Score Halved", "Continuing Game..."]
+        });
+        setTimeout(() => setFeedbackToast(null), 4000);
+
+        return {
+            ...prev,
+            metrics: newMetrics,
+            status: 'ROUND_FEEDBACK', // Show them what happened that almost killed them
+            round: nextRound,
+            investorDebuffRounds: newDebuff,
+            resilienceScore: Math.floor(prev.resilienceScore / 2), // Massive penalty
+            finalBailoutUsed: true,
+            gameOverReason: undefined
+        };
+    });
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-slate-200 p-4 md:p-8 font-sans">
       {/* Background Effects */}
@@ -278,36 +315,97 @@ const App: React.FC = () => {
       </div>
 
       {showIntro ? (
-        <div className="max-w-2xl mx-auto mt-12 text-center space-y-8 z-10 relative animate-fade-in">
-          <div className="bg-slate-800/50 p-10 rounded-2xl border border-slate-700 shadow-2xl backdrop-blur-sm">
-            <div className="flex justify-center mb-6">
+        <div className="max-w-4xl mx-auto mt-6 text-center space-y-8 z-10 relative animate-fade-in">
+          <div className="bg-slate-800/50 p-8 md:p-10 rounded-2xl border border-slate-700 shadow-2xl backdrop-blur-sm">
+            <div className="flex justify-center mb-4">
                 <ShieldCheck size={64} className="text-cyan-500" />
             </div>
-            <h1 className="text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-600 mb-4">
+            <h1 className="text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-600 mb-2">
               Crisis Management
             </h1>
-            <h2 className="text-xl text-slate-400 font-light mb-8">
+            <h2 className="text-2xl text-slate-200 font-semibold mb-8">
               Turn Your Company Around
             </h2>
-            <p className="text-slate-300 mb-8 leading-relaxed">
-              Steer a vulnerable company through unpredictable crises. 
-              Balance <strong>Morale, Finances, Supply Chain, and Public Image</strong>. 
-              Every choice has a trade-off. Can you survive?
-            </p>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {(Object.values(Difficulty) as Difficulty[]).map((level) => (
-                <button
-                  key={level}
-                  onClick={() => startGame(level)}
-                  className="flex flex-col items-center justify-center p-4 bg-slate-700 hover:bg-cyan-600 rounded-xl transition-all border border-slate-600 hover:border-cyan-400 group"
-                >
-                  <span className="font-bold text-lg text-white group-hover:text-white">{level}</span>
-                  <span className="text-xs text-slate-400 mt-1 group-hover:text-cyan-100">
-                    {DIFFICULTY_SETTINGS[level].timeLimit}s Timer
-                  </span>
-                </button>
-              ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left mb-10">
+                <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700/50 hover:border-cyan-500/30 transition-colors">
+                    <h3 className="text-cyan-400 font-bold text-lg mb-3 flex items-center gap-2">
+                        <Target className="w-5 h-5" /> Mission Objective
+                    </h3>
+                    <p className="text-slate-300 leading-relaxed text-sm">
+                        Steer a vulnerable corporation through a series of unpredictable crises. 
+                        Your goal is to <strong>survive all rounds</strong> without allowing any of your four key indicators to crash.
+                    </p>
+                </div>
+                
+                <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-700/50 hover:border-cyan-500/30 transition-colors">
+                     <h3 className="text-red-400 font-bold text-lg mb-3 flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5" /> Risk Factors
+                    </h3>
+                     <ul className="space-y-2 text-slate-300 text-sm">
+                        <li className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                            <span><strong>Morale:</strong> Employee trust and motivation.</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                            <span><strong>Finances:</strong> Cash reserves and stock price.</span>
+                        </li>
+                         <li className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+                            <span><strong>Supply Chain:</strong> Logistics and production.</span>
+                        </li>
+                         <li className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                            <span><strong>Public Image:</strong> Brand reputation.</span>
+                        </li>
+                     </ul>
+                </div>
+            </div>
+
+            <div className="text-left mb-10 space-y-4">
+                <h3 className="text-white font-bold text-lg border-b border-slate-700 pb-2 flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-yellow-400" />
+                    How to Play
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                        <div className="text-cyan-400 font-bold mb-1 flex items-center gap-2">1. Analyze</div>
+                        <p className="text-slate-400 text-sm">Read the crisis scenario carefully. Identify the immediate threats to your company.</p>
+                    </div>
+                    <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                        <div className="text-cyan-400 font-bold mb-1 flex items-center gap-2">2. Decide</div>
+                        <p className="text-slate-400 text-sm">Choose 1 of 4 actions. Every choice has trade-offs. There are no perfect answers.</p>
+                    </div>
+                    <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                        <div className="text-cyan-400 font-bold mb-1 flex items-center gap-2">3. Act Fast</div>
+                        <p className="text-slate-400 text-sm">The clock is ticking. Hesitation leads to default decisions and penalties.</p>
+                    </div>
+                </div>
+                 <div className="text-center mt-4 bg-red-900/20 py-3 rounded border border-red-900/30">
+                    <p className="text-red-400 text-sm font-bold">
+                        ⚠️ GAME OVER CONDITION: If ANY metric drops below 2.0
+                    </p>
+                </div>
+            </div>
+
+            <div className="border-t border-slate-700 pt-8">
+                <p className="text-slate-400 mb-6 text-sm uppercase tracking-widest font-semibold">Select Difficulty to Start</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {(Object.values(Difficulty) as Difficulty[]).map((level) => (
+                    <button
+                      key={level}
+                      onClick={() => startGame(level)}
+                      className="flex flex-col items-center justify-center p-5 bg-slate-700 hover:bg-cyan-600 rounded-xl transition-all border border-slate-600 hover:border-cyan-400 group shadow-lg hover:shadow-cyan-500/20 hover:-translate-y-1 duration-200"
+                    >
+                      <span className="font-bold text-xl text-white group-hover:text-white mb-1">{level}</span>
+                      <div className="flex items-center gap-1 text-xs text-slate-400 group-hover:text-cyan-100">
+                        <Clock size={12} />
+                        <span>{DIFFICULTY_SETTINGS[level].timeLimit}s Timer</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
             </div>
           </div>
         </div>
@@ -326,7 +424,11 @@ const App: React.FC = () => {
           )}
 
           {gameState.status === 'GAME_OVER' || gameState.status === 'VICTORY' ? (
-             <GameOver gameState={gameState} onRestart={() => setShowIntro(true)} />
+             <GameOver 
+               gameState={gameState} 
+               onRestart={() => setShowIntro(true)} 
+               onFinalBailout={handleFinalBailout}
+             />
           ) : (
             <>
               <Dashboard 

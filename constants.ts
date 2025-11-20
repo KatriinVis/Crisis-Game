@@ -6,17 +6,17 @@ export const BAILOUT_THRESHOLD = 3; // Can use bailout if any metric is below th
 
 export const DIFFICULTY_SETTINGS = {
   [Difficulty.EASY]: {
-    timeLimit: 30,
+    timeLimit: 45,
     volatility: 1, // Multiplier for impact
     rounds: 8
   },
   [Difficulty.NORMAL]: {
-    timeLimit: 25,
+    timeLimit: 30,
     volatility: 1.2,
     rounds: 10
   },
   [Difficulty.HARD]: {
-    timeLimit: 15,
+    timeLimit: 20,
     volatility: 1.5,
     rounds: 12
   }

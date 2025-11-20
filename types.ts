@@ -58,6 +58,7 @@ export interface GameState {
   }[];
   resilienceScore: number;
   bailoutUsed: boolean;
+  finalBailoutUsed: boolean; // New: End game rescue
   investorDebuffRounds: number; // If > 0, finance gains are blocked
   currentScenario: Scenario | null;
   loading: boolean;
